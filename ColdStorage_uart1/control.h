@@ -3,15 +3,15 @@
 
 // ---------- INPUT READ HELPER ----------
 //this is old logic 
-//static inline uint8_t readInput(uint8_t pin, uint8_t polarity)
-//{
-//  uint8_t raw = digitalRead(pin);
-//  return polarity ? raw : !raw;   // returns LOGICAL state
-//}
 static inline uint8_t readInput(uint8_t pin, uint8_t polarity)
 {
-  return digitalRead(pin);   // HIGH = 1, LOW = 0
+  uint8_t raw = digitalRead(pin);
+  return polarity ? raw : !raw;   // returns LOGICAL state
 }
+//static inline uint8_t readInput(uint8_t pin, uint8_t polarity)
+//{
+//  return digitalRead(pin);   // HIGH = 1, LOW = 0
+//}
 
 // ---- System control ----
 void allRelaysOff();

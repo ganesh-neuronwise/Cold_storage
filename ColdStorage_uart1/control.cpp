@@ -26,8 +26,8 @@ static float TEMP_OFF_DT  = 1.0f;   // stop cooling below Tsp - 1
 static float TEMP_STAGE2_DT = 5.0f; // above this delta → 2 compressors
 
 // Humidity control
-static float HUM_DB         = 5.0f; // ± deadband
-static float HUM_STAGE2_DH  = 5.0f; // large humidity error → 2 humidifiers
+static float HUM_DB         = 2.0f; // ± deadband
+static float HUM_STAGE2_DH  = 10.0f; // large humidity error → 2 humidifiers
 
 // Heater staging
 static float HEAT_STAGE2_DT = 5.0f;   // if Tsp - T > 5°C → both heaters
@@ -222,7 +222,6 @@ void controlTemperature(float T, float Tsp)
       if (c1) startCompressor(R_COMP1, 0);
       else if (c2) startCompressor(R_COMP2, 1);
     }
-    return;
   }
 
 /* ---------- DEHUMIDIFICATION AT TEMP OK ---------- */
@@ -263,7 +262,7 @@ bool h1 = heater1Healthy();
 bool h2 = heater2Healthy();
 
 // -------- SMALL ERROR (SAVE POWER) --------
-if (heatDelta < 3.0f) {
+if (heatDelta < 4.5f) {
     // do nothing
     relayOffSafe(R_HT1, 6);
     relayOffSafe(R_HT2, 7);
