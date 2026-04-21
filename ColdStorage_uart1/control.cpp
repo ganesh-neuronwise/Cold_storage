@@ -187,6 +187,40 @@ void controlTemperature(float T, float Tsp)
   relayOnSafe(R_FAN1, 4);
   relayOnSafe(R_FAN2, 5);
 
+    // ==========================================================
+  // 🔥 FAULT-DRIVEN SHUTDOWN — runs BEFORE any start/stop logic
+  // Bypasses the 3-minute minimum-on timer because a real fault
+  // is immediate (HP/LP/OL must drop the relay NOW, not in 3 min).
+  // Also resets compOffTime so the 3-min off-timer starts fresh,
+  // preventing instant restart if the fault flickers.
+  // ==========================================================
+
+  // ---- Compressor 1 fault → force stop ----
+  if (!comp1Healthy() && digitalRead(R_COMP1) == HIGH) {
+    digitalWrite(R_COMP1, LOW);
+    relayLastChange[0] = millis();
+    compOffTime[0]     = millis();
+  }
+
+  // ---- Compressor 2 fault → force stop ----
+  if (!comp2Healthy() && digitalRead(R_COMP2) == HIGH) {
+    digitalWrite(R_COMP2, LOW);
+    relayLastChange[1] = millis();
+    compOffTime[1]     = millis();
+  }
+
+  // ---- Heater 1 overload → force stop ----
+  if (!heater1Healthy() && digitalRead(R_HT1) == HIGH) {
+    digitalWrite(R_HT1, LOW);
+    relayLastChange[6] = millis();
+  }
+
+  // ---- Heater 2 overload → force stop ----
+  if (!heater2Healthy() && digitalRead(R_HT2) == HIGH) {
+    digitalWrite(R_HT2, LOW);
+    relayLastChange[7] = millis();
+  }
+
   float T_ON  = Tsp + TEMP_ON_DT;
   float T_OFF = Tsp - TEMP_OFF_DT;
 

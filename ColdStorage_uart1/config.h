@@ -23,30 +23,43 @@
 // ---------- DIGITAL INPUT POLARITY ----------
 // 1 = ACTIVE HIGH
 // 0 = ACTIVE LOW
+// ==========================================================
+// 🔥 TEST vs PRODUCTION POLARITY
+// 0 = TEST BENCH  (pins float HIGH → inverted so normal reads 0)
+// 1 = PRODUCTION  (opto drives LOW when 24V present)
+// Flip this ONE line to change everything.
+// ==========================================================
+#define PRODUCTION_MODE  0
 
-#define POL_C1_P     0
-#define POL_C1_HP    0
-#define POL_C1_LP    0
-#define POL_C1_OL    0
+#if PRODUCTION_MODE
+  #define POL_DEFAULT  1
+#else
+  #define POL_DEFAULT  0
+#endif
 
-#define POL_C2_P     0
-#define POL_C2_HP    0
-#define POL_C2_LP    0
-#define POL_C2_OL    0
+#define POL_C1_P     POL_DEFAULT
+#define POL_C1_HP    POL_DEFAULT
+#define POL_C1_LP    POL_DEFAULT
+#define POL_C1_OL    POL_DEFAULT
 
-#define POL_HF1_P    0
-#define POL_HF2_P    0
+#define POL_C2_P     POL_DEFAULT
+#define POL_C2_HP    POL_DEFAULT
+#define POL_C2_LP    POL_DEFAULT
+#define POL_C2_OL    POL_DEFAULT
 
-#define POL_FAN1_P   0
-#define POL_FAN2_P   0
+#define POL_HF1_P    POL_DEFAULT
+#define POL_HF2_P    POL_DEFAULT
 
-#define POL_HT1_P    0
-#define POL_HT1_OL   0
-#define POL_HT2_P    0
-#define POL_HT2_OL   0
+#define POL_FAN1_P   POL_DEFAULT
+#define POL_FAN2_P   POL_DEFAULT
 
-#define POL_DOOR     0
-#define POL_PHASE    0
+#define POL_HT1_P    POL_DEFAULT
+#define POL_HT1_OL   POL_DEFAULT
+#define POL_HT2_P    POL_DEFAULT
+#define POL_HT2_OL   POL_DEFAULT
+
+#define POL_DOOR     POL_DEFAULT
+#define POL_PHASE    POL_DEFAULT
 
 
 
