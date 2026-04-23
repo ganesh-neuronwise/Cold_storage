@@ -108,7 +108,8 @@ void loop()
   temperature = readTemperature();
   humidity    = readHumidity();
 //  humidity = 60.70;
-  process_uart_rx();
+process_uart_rx(&rtc);
+delay(5);
   
   // ---------- PERIODIC ASKSET SYNC ----------
 if (runEnable) {
@@ -259,19 +260,24 @@ else {
 
 
 
-if (!testMode){
-  send_status_json(
-    rtc,
-    temperature,
-    humidity,
-    stateStr,
-    relay_pins
-  );
+static uint32_t lastStatusMs = 0;
+
+// send every 1000 ms non-blocking
+if (!testMode && millis() - lastStatusMs >= 1000)
+{
+    lastStatusMs = millis();
+
+    send_status_json(
+        rtc,
+        temperature,
+        humidity,
+        stateStr,
+        relay_pins
+    );
 }
 
-  unsigned long loopEnd = millis() + 1000;
-  while (millis() < loopEnd) {
-      process_uart_rx();     // keep processing commands during the wait
-      delay(10);             // yield to avoid busy spin
-  }
+// keep UART responsive always
+process_uart_rx(&rtc);
+
+delay(5);
 }

@@ -1,0 +1,477 @@
+i give you connect wifi button and disconnect so read that and analysis carefully so all task should happens with that and then i give you its connect state code in this file so you undesrtand how its connect the we have to call the api to it of time and these things done when wifi connect succesfully and also we have to do that no other task should happens and if conneciton build and not data time update then safely back to our state normal and disconnect that no load because you know sometime wifi connect but internet is not avaible not fecth the time date and so all fall back option safely and discconect things after work
+void connectWifi(lv_event_t * e ) {
+  //    wifi_on();
+  const char * ssid = lv_textarea_get_text(ui_ssidInput);
+  const char * password = lv_textarea_get_text(ui_wifiPassword);
+  FlagStorage::setWiFiCredentials(String(ssid), String(password));
+  
+  Serial.println("Changing the state from Idle to CONNECTWIFI state");
+  
+  StateMachine::getInstance().setState(SM_CONNECTWIFI);
+  
+//  _ui_screen_change(&ui_HomeScreen, LV_SCR_LOAD_ANIM_MOVE_LEFT, 50, 0, &ui_HomeScreen_screen_init);
+  
+
+}
+
+void disconnectWifi(lv_event_t * e)
+{
+    if(lv_event_get_code(e) != LV_EVENT_CLICKED)
+        return;
+
+    // If WiFi already connected → DISCONNECT
+    if(WiFiManager::isConnected())
+    {
+        Serial.println("🔌 Disconnect WiFi requested");
+
+        // Clear stored credentials
+        FlagStorage::setWiFiCredentials("", "");
+
+        clear_wifi_ssid();
+        clear_wifi_password();
+
+        // Clear UI fields
+        lv_textarea_set_text(ui_ssidInput, "");
+        lv_textarea_set_text(ui_wifiPassword, "");
+
+        // Trigger disconnect state
+        Serial.println("Changing the state from Idle to DISCONNECTWIFI state");
+        StateMachine::getInstance().setState(SM_DISCONNECTWIFI);
+    }
+    else
+    {
+        // WiFi not connected → CONNECT
+        const char * ssid = lv_textarea_get_text(ui_ssidInput);
+        const char * password = lv_textarea_get_text(ui_wifiPassword);
+
+        Serial.println("📶 Connect WiFi requested");
+
+        if(strlen(ssid) == 0)
+        {
+            Serial.println("⚠️ SSID is empty. Cannot connect.");
+            return;
+        }
+
+        // Save credentials
+        FlagStorage::setWiFiCredentials(String(ssid), String(password));
+
+        // Trigger connect state
+        Serial.println("Changing the state from Idle to CONNECTWIFI state");
+        StateMachine::getInstance().setState(SM_CONNECTWIFI);
+
+    }
+}
+
+void StateMachine::handleConnectWiFiState() {
+  static bool attempted = false;
+  static lv_obj_t* wifiPopup = nullptr;
+
+  if (!attempted) {
+    attempted = true;
+    wifiPopup = showWifiPopup("Connecting to WiFi...", true);
+
+    // ✅ Run Wi-Fi startup on Core 0 to avoid LVGL task conflict
+    xTaskCreatePinnedToCore(
+    [](void*) {
+      Serial.println("📶 Starting WiFi on Core 0...");
+
+      // ✅ Small safeguard: make sure NVS is ready (rare edge case)
+      if (!WiFi.getMode()) {
+        esp_err_t ret = nvs_flash_init();
+        if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+          Serial.println("⚠️ NVS corrupted → erasing inside task");
+          nvs_flash_erase();
+          nvs_flash_init();
+        }
+      }
+
+      // ✅ Begin WiFi (Viewe safe)
+      wifiManager.begin();
+      vTaskDelete(NULL);
+    },
+    "wifi_start_task",
+    4096,   // stack
+    NULL,
+    1,      // low priority
+    NULL,
+    0       // run on core 0
+    );
+  }
+
+  // ✅ Wait ~3s to update popup feedback
+  if (millis() - stateStartTime >= 8000) {
+    if (wifiManager.isConnected()) {
+      closeWifiPopup(wifiPopup); // Remove "loading" popup
+      wifiPopup = showWifiPopup("Connected!", false); // Show success
+      lv_timer_t* t = lv_timer_create([](lv_timer_t* timer) {
+        closeWifiPopup((lv_obj_t*)timer->user_data);
+        lv_timer_del(timer);
+      }, 1500, wifiPopup); // Auto-close after 1.5s
+    } else {
+      closeWifiPopup(wifiPopup);
+      wifiPopup = showWifiPopup("Connection Failed", false); // Show fail
+      lv_timer_t* t = lv_timer_create([](lv_timer_t* timer) {
+        closeWifiPopup((lv_obj_t*)timer->user_data);
+        lv_timer_del(timer);
+      }, 1500, wifiPopup);
+    }
+    if (wifiManager.isConnected()) {
+      lv_obj_clear_flag(ui_wifiIcon, LV_OBJ_FLAG_HIDDEN);
+      lv_label_set_text(ui_scanBtn, "DISCONNECT");
+    }
+    //    _ui_screen_change(&ui_Screen3, LV_SCR_LOAD_ANIM_MOVE_LEFT, 50, 0, &ui_Screen3_screen_init);
+    setState(SM_IDLE);
+    attempted = false;
+  }
+}
+
+// new by Ganesh
+void StateMachine::handleDisConnectWiFiState() {
+  static bool attempted = false;
+  static lv_obj_t* wifiPopup = nullptr;
+
+  if (!attempted) {
+    wifiPopup = showWifiPopup("Trying to disconnect...", true);
+
+    wifiManager.eraseWiFiCredentials();
+    wifiManager.disc();
+    attempted = true;
+  }
+
+  if (millis() - stateStartTime >= 5000) {
+    if (!wifiManager.isConnected()) {
+
+      closeWifiPopup(wifiPopup); // Remove "loading" popup
+      wifiPopup = showWifiPopup("Disconnected!", false); // Show success
+      lv_timer_t* t = lv_timer_create([](lv_timer_t* timer) {
+        closeWifiPopup((lv_obj_t*)timer->user_data);
+        lv_timer_del(timer);
+      }, 1500, wifiPopup); // Auto-close after 1.5s
+      Serial.println("✅ WiFi Disconnected");
+
+
+
+    } else {
+      Serial.println("⚠️ WiFi Still Connected");
+    }
+
+    lv_obj_add_flag(ui_wifiIcon, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(ui_scanBtn, "CONNECT");
+    //    _ui_screen_change(&ui_Screen3, LV_SCR_LOAD_ANIM_MOVE_LEFT, 50, 0, &ui_Screen3_screen_init);
+    setState(SM_IDLE);
+    attempted = false;
+  }
+
+}
+
+idle state :
+void StateMachine::handleIdleState() {
+
+    if (lv_scr_act() == ui_TestComponent)
+        return;
+
+
+    // 🔍 HEAP HEARTBEAT — prints every 30s
+  // If 'largest' drops while 'free' stays stable → heap fragmentation
+  // If both drop → real memory leak
+  static uint32_t lastHeapLog = 0;
+  if (millis() - lastHeapLog > 30000) {
+    lastHeapLog = millis();
+    Serial.printf("[HB] up=%lus free=%u largest=%u minEver=%u\n",
+        millis() / 1000,
+        ESP.getFreeHeap(),
+        heap_caps_get_largest_free_block(MALLOC_CAP_8BIT),
+        ESP.getMinFreeHeap());
+  }
+        
+// 🔥 REMOVED duplicate UART reader — it was stealing bytes from
+  // the env-JSON parser below, causing malformed packets.
+  // ASKSET is now handled inside device_serial_receive_env_json()
+  // (it already has ASKSET detection — see SerialComm.cpp line ~220).
+
+  bool gotNewData = device_serial_receive_env_json(50);
+  handle_fw_bridge_feedback();
+
+  if (gotNewData) {
+    hasValidEnvData = true;
+
+    // 🔥 Trigger SD log every 10s — independent of current screen
+    static uint32_t lastLogTime = 0;
+    if (millis() - lastLogTime > 10000) {
+      lastLogTime = millis();
+      setState(SM_LOG_DATA);
+      return;                       // next tick runs handleLogDataState()
+    }
+
+    if (lv_scr_act() != ui_HomeScreen) return;
+
+    const EnvData* env = getEnvData();
+
+    clearEnvDataUpdatedFlag();
+
+    // ==========================================================
+    // 🚨 ALARM CHECK — formats per Cold Chain Error Log spec
+    // Each alarm latched — logs only on rising edge.
+    // Runs on ANY screen — logging is independent of UI.
+    //
+    // 🔥 GUARD: skip temp/humid alarm checks if thresholds not set
+    // (prevents log spam on fresh EEPROM or before user configures)
+    // ==========================================================
+    bool thresholdsValid = (highTempAlarm  != 0 &&
+                            lowTempAlarm   != 0 &&
+                            highHumidAlarm != 0 &&
+                            lowHumidAlarm  != 0);
+
+    if (thresholdsValid) {
+
+      // 🌡️ HIGH Temperature → HT (actual, setpoint)
+      if (env->temperature >= highTempAlarm) {
+        if (!tempAlarmActive) {
+          tempAlarmActive = true;
+          char msg[32];
+          snprintf(msg, sizeof(msg), "HT (%.1f, %d)", env->temperature, setPointTemp);
+          logAlarmToSD(msg, "High Temperature", "", env->temperature, env);
+        }
+      } else {
+        tempAlarmActive = false;
+      }
+
+      // ❄️ LOW Temperature → LT (actual, setpoint)
+      if (env->temperature <= lowTempAlarm) {
+        if (!lowTempAlarmActive) {
+          lowTempAlarmActive = true;
+          char msg[32];
+          snprintf(msg, sizeof(msg), "LT (%.1f, %d)", env->temperature, setPointTemp);
+          logAlarmToSD(msg, "Low Temperature", "", env->temperature, env);
+        }
+      } else {
+        lowTempAlarmActive = false;
+      }
+
+      // 💧 HIGH Humidity → HRh (actual, setpoint)
+      if (env->humidity >= highHumidAlarm) {
+        if (!humidAlarmActive) {
+          humidAlarmActive = true;
+          char msg[32];
+          snprintf(msg, sizeof(msg), "HRh (%.1f, %d)", env->humidity, setPointHumid);
+          logAlarmToSD(msg, "High Humidity", "", env->humidity, env);
+        }
+      } else {
+        humidAlarmActive = false;
+      }
+
+      // 🔥 LOW Humidity → LRh (actual, setpoint)
+      if (env->humidity <= lowHumidAlarm) {
+        if (!lowHumidAlarmActive) {
+          lowHumidAlarmActive = true;
+          char msg[32];
+          snprintf(msg, sizeof(msg), "LRh (%.1f, %d)", env->humidity, setPointHumid);
+          logAlarmToSD(msg, "Low Humidity", "", env->humidity, env);
+        }
+      } else {
+        lowHumidAlarmActive = false;
+      }
+
+    }   // 🔥 END
+
+    // ❄️ Compressor 1
+    if (env->c1_hp_trip && !c1_hp_latch) {
+      logAlarmToSD("C1 HPT", "C1 HP", "Compressor 1 HP Trip", 1.0, env);
+      c1_hp_latch = true;
+    } else if (!env->c1_hp_trip) c1_hp_latch = false;
+
+    if (env->c1_lp_trip && !c1_lp_latch) {
+      logAlarmToSD("C1 LPT", "C1 LP", "Compressor 1 LP Trip", 1.0, env);
+      c1_lp_latch = true;
+    } else if (!env->c1_lp_trip) c1_lp_latch = false;
+
+    if (env->c1_overload && !c1_ovl_latch) {
+      logAlarmToSD("C1 OVL", "C1 OVL", "Compressor 1 Overload", 1.0, env);
+      c1_ovl_latch = true;
+    } else if (!env->c1_overload) c1_ovl_latch = false;
+
+    // ❄️ Compressor 2
+    if (env->c2_hp_trip && !c2_hp_latch) {
+      logAlarmToSD("C2 HPT", "C2 HP", "Compressor 2 HP Trip", 1.0, env);
+      c2_hp_latch = true;
+    } else if (!env->c2_hp_trip) c2_hp_latch = false;
+
+    if (env->c2_lp_trip && !c2_lp_latch) {
+      logAlarmToSD("C2 LPT", "C2 LP", "Compressor 2 LP Trip", 1.0, env);
+      c2_lp_latch = true;
+    } else if (!env->c2_lp_trip) c2_lp_latch = false;
+
+    if (env->c2_overload && !c2_ovl_latch) {
+      logAlarmToSD("C2 OVL", "C2 OVL", "Compressor 2 Overload", 1.0, env);
+      c2_ovl_latch = true;
+    } else if (!env->c2_overload) c2_ovl_latch = false;
+
+    // 🔥 Heaters
+    if (env->ht1_overload && !ht1_ovl_latch) {
+      logAlarmToSD("Heat 1 OVL", "Heat 1", "Heater 1 Overload", 1.0, env);
+      ht1_ovl_latch = true;
+    } else if (!env->ht1_overload) ht1_ovl_latch = false;
+
+    if (env->ht2_overload && !ht2_ovl_latch) {
+      logAlarmToSD("Heat 2 OVL", "Heat 2", "Heater 2 Overload", 1.0, env);
+      ht2_ovl_latch = true;
+    } else if (!env->ht2_overload) ht2_ovl_latch = false;
+
+    // ⚡ Phase
+    if (env->phase_fail && !phase_latch) {
+      logAlarmToSD("SPP ERROR", "SPP", "Single Phase Fail", 1.0, env);
+      phase_latch = true;
+    } else if (!env->phase_fail) phase_latch = false;
+
+    // 🚪 Door  (NEW — was missing before)
+    if (env->door_open && !door_open_latch) {
+      logAlarmToSD("Door Open", "Door", "Door Open", 1.0, env);
+      door_open_latch = true;
+    } else if (!env->door_open) door_open_latch = false;
+
+    // ==========================================================
+    // 🖥️ UI UPDATES — only when on Home screen
+    // ==========================================================
+    if (lv_scr_act() != ui_HomeScreen) return;
+
+    // ================= DATE TIME =================
+    if (ui_lblDateHome && ui_lblTimeHome &&
+        lv_obj_is_valid(ui_lblDateHome) &&
+        lv_obj_is_valid(ui_lblTimeHome)) {
+
+      int y,m,d,hh,mm,ss;
+
+      if (sscanf(env->datetime, "%d-%d-%d %d:%d:%d", &y,&m,&d,&hh,&mm,&ss) == 6) {
+        char dateBuf[20];
+        char timeBuf[20];
+
+        snprintf(dateBuf, sizeof(dateBuf), "%02d-%02d-%02d", d,m,y);
+        snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d", hh,mm);
+
+        lv_label_set_text(ui_lblDateHome, dateBuf);
+        lv_label_set_text(ui_lblTimeHome, timeBuf);
+      }
+    }
+  }
+
+  // ================= UI UPDATE =================
+static uint32_t lastUiUpdate = 0;
+
+if (millis() - lastUiUpdate < 500) {
+    return;
+}
+lastUiUpdate = millis();
+if (hasValidEnvData) {
+    const EnvData* env = getEnvData();
+
+    // 🔥 SAFE COPY (no heap churn)
+    static EnvData copy;
+    copy = *env;                          // ✅ refresh data every tick
+
+    lv_async_call([](void *data) {
+      EnvData* e = (EnvData*)data;
+
+if (lv_scr_act() != ui_HomeScreen ||
+    !ui_homeTempLbl ||
+    !lv_obj_is_valid(ui_homeTempLbl)) {
+    return;
+}
+
+      // -------- TEMP / HUM --------
+      char tempBuf[16];
+      char humBuf[16];
+
+      snprintf(tempBuf, sizeof(tempBuf), "%.1f°C", e->temperature);
+      snprintf(humBuf, sizeof(humBuf), "%.2f%%", e->humidity);
+
+      SAFE_LABEL_SET(ui_homeTempLbl, tempBuf);
+      SAFE_LABEL_SET(ui_homeHumidLbl, humBuf);
+
+      // ================= COMP1 =================
+      if (e->c1_hp_trip) {
+        SAFE_LABEL_SET(ui_homeComp1Lbl, "Comp1 : C1 HPT");
+        SAFE_COLOR_SET(ui_homeComp1Lbl, lv_color_hex(0xFF0101));
+      }
+      else if (e->c1_lp_trip) {
+        SAFE_LABEL_SET(ui_homeComp1Lbl, "Comp1 : C1 LPT");
+        SAFE_COLOR_SET(ui_homeComp1Lbl, lv_color_hex(0xFF0101));
+      }
+      else if (e->c1_overload) {
+        SAFE_LABEL_SET(ui_homeComp1Lbl, "Comp1 : C1 OVL");
+        SAFE_COLOR_SET(ui_homeComp1Lbl, lv_color_hex(0xFF0101));
+      }
+      else if (e->relays[0] == 1) {
+        SAFE_LABEL_SET(ui_homeComp1Lbl, "Comp1 : ON");
+        SAFE_COLOR_SET(ui_homeComp1Lbl, lv_color_hex(0x00FF66));
+      }
+      else {
+        SAFE_LABEL_SET(ui_homeComp1Lbl, "Comp1 : STDBY");
+        SAFE_COLOR_SET(ui_homeComp1Lbl, lv_color_hex(0xFFD700));
+      }
+
+      // ================= COMP2 =================
+      if (e->c2_hp_trip) {
+        SAFE_LABEL_SET(ui_homeComp2Lbl, "Comp2 : C2 HPT");
+        SAFE_COLOR_SET(ui_homeComp2Lbl, lv_color_hex(0xFF0101));
+      }
+      else if (e->c2_lp_trip) {
+        SAFE_LABEL_SET(ui_homeComp2Lbl, "Comp2 : C2 LPT");
+        SAFE_COLOR_SET(ui_homeComp2Lbl, lv_color_hex(0xFF0101));
+      }
+      else if (e->c2_overload) {
+        SAFE_LABEL_SET(ui_homeComp2Lbl, "Comp2 : C2 OVL");
+        SAFE_COLOR_SET(ui_homeComp2Lbl, lv_color_hex(0xFF0101));
+      }
+      else if (e->relays[1] == 1) {
+        SAFE_LABEL_SET(ui_homeComp2Lbl, "Comp2 : ON");
+        SAFE_COLOR_SET(ui_homeComp2Lbl, lv_color_hex(0x00FF66));
+      }
+      else {
+        SAFE_LABEL_SET(ui_homeComp2Lbl, "Comp2 : STDBY");
+        SAFE_COLOR_SET(ui_homeComp2Lbl, lv_color_hex(0xFFD700));
+      }
+
+      // ================= HEATER =================
+      SAFE_LABEL_SET(ui_homeHt1Lbl,
+        e->ht1_overload ? "Heat1 : OVL" :
+        (e->relays[6] ? "Heat1 : ON" : "Heat1 : STDBY"));
+
+      SAFE_COLOR_SET(ui_homeHt1Lbl,
+        e->ht1_overload ? lv_color_hex(0xFF0101) :
+        (e->relays[6] ? lv_color_hex(0x00FF66) : lv_color_hex(0xFFD700)));
+
+      SAFE_LABEL_SET(ui_homeHt2Lbl,
+        e->ht2_overload ? "Heat2 : OVL" :
+        (e->relays[7] ? "Heat2 : ON" : "Heat2 : STDBY"));
+
+      SAFE_COLOR_SET(ui_homeHt2Lbl,
+        e->ht2_overload ? lv_color_hex(0xFF0101) :
+        (e->relays[7] ? lv_color_hex(0x00FF66) : lv_color_hex(0xFFD700)));
+
+      // ================= HUMIDIFIERS =================  
+      SAFE_LABEL_SET(ui_homeHf1Lbl, e->relays[2] ? "Humid1 : ON" : "Humid1 : OFF");
+      SAFE_COLOR_SET(ui_homeHf1Lbl, e->relays[2] ? lv_color_hex(0x00FF66) : lv_color_hex(0xFF0101));
+
+      SAFE_LABEL_SET(ui_homeHf2Lbl, e->relays[3] ? "Humid2 : ON" : "Humid2 : OFF");
+      SAFE_COLOR_SET(ui_homeHf2Lbl, e->relays[3] ? lv_color_hex(0x00FF66) : lv_color_hex(0xFF0101));
+
+      // ================= FANS =================
+      SAFE_LABEL_SET(ui_Label16, e->relays[4] ? "Fan1 : ON" : "Fan1 : OFF");
+      SAFE_COLOR_SET(ui_Label16, e->relays[4] ? lv_color_hex(0x00FF66) : lv_color_hex(0xFF0101));
+
+      SAFE_LABEL_SET(ui_Label17, e->relays[5] ? "Fan2 : ON" : "Fan2 : OFF");
+      SAFE_COLOR_SET(ui_Label17, e->relays[5] ? lv_color_hex(0x00FF66) : lv_color_hex(0xFF0101));
+
+      // ================= DOOR =================
+      SAFE_LABEL_SET(ui_Label18, e->door_open ? "Door : Open" : "Door : Closed");
+      SAFE_COLOR_SET(ui_Label18, e->door_open ? lv_color_hex(0xFF0101) : lv_color_hex(0x00FF66));
+
+// ================= PHASE =================
+      SAFE_LABEL_SET(ui_Label2, e->phase_fail ? "SPP : ERROR" : "SPP : OK");
+      SAFE_COLOR_SET(ui_Label2, e->phase_fail ? lv_color_hex(0xFF0101) : lv_color_hex(0x00FF66));
+
+      // NO delete — copy is static, owned by caller
+
+    }, &copy);
+  }
+}

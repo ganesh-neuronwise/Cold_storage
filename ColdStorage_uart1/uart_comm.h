@@ -12,7 +12,8 @@ void send_status_json(
 );
 
 
-void process_uart_rx();
+//void process_uart_rx();
+void process_uart_rx(uRTCLib *rtc = nullptr);
 extern float tempSet, humSet;
 extern bool runEnable;
 void resetSetReceived();
